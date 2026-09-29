@@ -1,0 +1,84 @@
+#include <unistd.h>
+#include <cstring>
+#include <cstdlib>
+
+int main() {
+    char numbers[4096];
+    ssize_t n = read(0, numbers, sizeof(numbers) - 1);
+    if (n <= 0) return 0;
+
+    numbers[n] = '\0';
+
+    char* line = numbers;
+    while (line != nullptr && *line != '\0') {
+        char* nl = strchr(line, '\n');
+        if (nl != nullptr) {
+            *nl = '\0';
+        }
+
+        char* p = line;
+        char* end;
+
+        double result = strtod(p, &end);
+        if (end == p) {
+            if (nl == nullptr) break;
+            line = nl + 1;
+            continue;
+        }
+        p = end;
+
+        while (true) {
+            double x = strtod(p, &end);
+            if (end == p) break;
+
+            if (x == 0.0) {
+                const char* msg = "division by zero\n";
+                write(2, msg, strlen(msg));
+                exit(1);
+            }
+
+            result /= x;
+            p = end;
+        }
+
+        char out[64];
+        int len = 0;
+
+        if (result < 0) {
+            out[len++] = '-';
+            result = -result;
+        }
+
+        long int_part = (long)result;
+        char digits[32];
+        int t = 0;
+        if (int_part == 0) {
+            digits[t++] = '0';
+        } else {
+            while (int_part > 0) {
+                digits[t++] = '0' + (int_part % 10);
+                int_part /= 10;
+            }
+        }
+        while (t > 0) {
+            out[len++] = digits[--t];
+        }
+
+        out[len++] = '.';
+        double frac = result - (long)result;
+        for (int i = 0; i < 4; i++) {
+            frac *= 10;
+            int digit = (int)(frac + 1e-9);
+            out[len++] = '0' + digit;
+            frac -= digit;
+        }
+        out[len++] = '\n';
+
+        write(1, out, len);
+
+        if (nl == nullptr) break;
+        line = nl + 1;
+    }
+
+    return 0;
+}

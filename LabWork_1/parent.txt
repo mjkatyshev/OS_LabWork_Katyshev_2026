@@ -1,0 +1,90 @@
+#include <unistd.h>
+#include <fcntl.h>
+#include <cstring>
+#include <sys/wait.h>
+
+int main() {
+    char file_name[256];
+
+    ssize_t n = read(0, file_name, sizeof(file_name) - 1);
+
+    if (n == -1) {
+        const char* msg = "read error\n";
+        write(2, msg, strlen(msg));
+        return 1;
+    }
+
+    if (n == 0) {
+        const char* msg = "no file name found\n";
+        write(2, msg, strlen(msg));
+        return 1;
+    }
+
+    file_name[n] = '\0';
+    if (n > 0 && file_name[n - 1] == '\n') { file_name[n - 1] = '\0'; }
+
+    int file = open(file_name, O_RDONLY);
+    if (file == -1) {
+        const char* msg = "open file error\n";
+        write(2, msg, strlen(msg));
+        return 1;
+    }
+
+    //const char* ok = "file open\n";
+    //write(1, ok, strlen(ok));
+
+    int fd[2];
+    if (pipe(fd) == -1){
+        const char* msg = "pipe error\n";
+        write(2, msg, strlen(msg));
+        return 1;
+    }
+
+    pid_t pid = fork();
+
+    if (pid == -1) {
+        const char* msg = "fork error\n";
+        write(2, msg, strlen(msg));
+        return 1;
+    }
+
+    if (pid == 0){
+        //const char* msg = "child\n";
+        //write(1, msg, strlen(msg));
+
+        dup2(file, 0);
+        dup2(fd[1], 1);
+        close(fd[0]);
+        close(fd[1]);
+        close(file);
+
+        execl("./child", "child", NULL);
+
+        const char* msg = "exec error\n";
+        write(2, msg, strlen(msg));
+        return 1;
+    } else {
+        //const char* msg = "parent\n";
+        //write(1, msg, strlen(msg));
+
+        close(fd[1]);
+        close(file);
+
+char result[4096];
+        ssize_t r;
+        while ((r = read(fd[0], result, sizeof(result))) > 0){
+            write(1, result, r);
+        }
+        close(fd[0]);
+
+        int status;
+        waitpid(pid, &status, 0);
+
+        if (WIFEXITED(status) && WEXITSTATUS(status) != 0) {
+            const char* msg = "child failed\n";
+            write(2, msg, strlen(msg));
+            return 1;
+        }
+    }
+
+    return 0;
