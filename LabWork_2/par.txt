@@ -1,0 +1,138 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <pthread.h>
+
+double** global_matrix;
+int global_n;
+int max_threads;
+int current_threads = 0;
+
+pthread_mutex_t thread_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t thread_cond = PTHREAD_COND_INITIALIZER;
+
+double** create_matrix(int n){
+    double** matrix = (double**)malloc(n * sizeof(double*));
+    for (int i = 0; i < n; i++) {
+        matrix[i] = (double*)malloc(n * sizeof(double));
+    }
+    return matrix;
+}
+
+void free_matrix(double** matrix, int n) {
+    for (int i = 0; i < n; i++) {
+    free(matrix[i]);
+    }
+    free(matrix);
+}
+
+double determinant(double** matrix, int n) {
+    if (n == 1) return matrix[0][0];
+    if (n == 2) return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0];
+
+    double det = 0;
+    double** minor = create_matrix(n - 1);
+
+    for (int col = 0; col < n; col++) {
+        for (int i = 1; i < n; i++) {
+            int minor_col = 0;
+            for (int j = 0; j < n; j++) {
+                if (j == col) continue;
+                minor[i - 1][minor_col++] = matrix[i][j];
+            }
+        }
+
+        double sign = (col % 2 == 0) ? 1.0 : -1.0;
+        det += sign * matrix[0][col] * determinant(minor, n - 1);
+    }
+
+    free_matrix(minor, n - 1);
+    return det;
+}
+
+typedef struct {
+    int col;
+    double result;
+} ThreadData;
+
+void* thread_func(void* arg) {
+    ThreadData* data = (ThreadData*)arg;
+
+    pthread_mutex_lock(&thread_mutex);
+    while (current_threads >= max_threads) {
+        pthread_cond_wait(&thread_cond, &thread_mutex);
+    }
+
+    current_threads++;
+    pthread_mutex_unlock(&thread_mutex);
+
+    double** minor = create_matrix(global_n - 1);
+    int col = data->col;
+    for (int i = 1; i < global_n; i++) {
+        int minor_col = 0;
+        for (int j = 0; j < global_n; j++) {
+        if (j == col) continue;
+        minor[i - 1][minor_col++] = global_matrix[i][j];
+        }
+    }
+
+    double sign = (col % 2 == 0) ? 1.0 : -1.0;
+
+    data->result = sign * global_matrix[0][col] * determinant(minor, global_n - 1);
+
+    free_matrix(minor, global_n - 1);
+    pthread_mutex_lock(&thread_mutex);
+    current_threads--;
+    pthread_cond_signal(&thread_cond);
+    pthread_mutex_unlock(&thread_mutex);
+
+    return NULL;
+}
+
+int main(int argc, char* argv[]) {
+
+    if (argc != 3) {
+        printf("Usage: %s <matrix_size> <max_threads>", argv[0]);
+        return 1;
+    }
+
+    global_n = atoi(argv[1]);
+    max_threads = atoi(argv[2]);
+
+    global_matrix = create_matrix(global_n);
+    srand(42);
+    for (int i = 0; i < global_n; i++)
+        for (int j = 0; j < global_n; j++)
+            global_matrix[i][j] = (rand() % 10) + 1.0;
+
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
+    pthread_t* threads = (pthread_t*)malloc(global_n * sizeof(pthread_t));
+    ThreadData* tdata = (ThreadData*)malloc(global_n * sizeof(ThreadData));
+
+    for (int col = 0; col < global_n; col++) {
+        tdata[col].col = col;
+        tdata[col].result = 0;
+        pthread_create(&threads[col], NULL, thread_func, &tdata[col]);
+    }
+
+    double det = 0;
+    for (int col = 0; col < global_n; col++) {
+        pthread_join(threads[col], NULL);
+        det += tdata[col].result;
+    }
+
+    clock_gettime(CLOCK_MONOTONIC, &end);
+
+    double time_taken = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_nsec - start.tv_nsec) / 1000000.0;
+
+    printf("Parallel Det: %f\n", det);
+    printf("Time: %.3f ms\n", time_taken);
+
+    free(threads);
+    free(tdata);
+    free_matrix(global_matrix, global_n);
+
+    return 0;
+}

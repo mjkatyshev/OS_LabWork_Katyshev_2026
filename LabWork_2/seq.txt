@@ -1,0 +1,73 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+
+double** create_matrix(int n){
+    double** matrix = (double**)malloc(n * sizeof(double*));
+    for (int i = 0; i < n; i++) {
+        matrix[i] = (double*)malloc(n * sizeof(double));
+    }
+    return matrix;
+}
+
+void free_matrix(double** matrix, int n) {
+    for (int i = 0; i < n; i++) {
+    free(matrix[i]);
+    }
+    free(matrix);
+}
+
+double determinant(double** matrix, int n) {
+    if (n == 1) return matrix[0][0];
+    if (n == 2) return matrix[0][0] * matrix[1][1] - matrix[0][1] * matrix[1][0];
+
+    double det = 0;
+    double** minor = create_matrix(n - 1);
+
+    for (int col = 0; col < n; col++) {
+        for (int i = 1; i < n; i++) {
+            int minor_col = 0;
+            for (int j = 0; j < n; j++) {
+                if (j == col) continue;
+minor[i - 1][minor_col++] = matrix[i][j];
+            }
+        }
+
+double sign = (col % 2 == 0) ? 1.0 : -1.0;
+det += sign * matrix[0][col] * determinant(minor, n - 1);
+    }
+
+    free_matrix(minor, n - 1);
+    return det;
+}
+
+int main(int argc, char* argv[]) {
+    if (argc != 2) {
+        printf("Usage: %s <matrix_size>\n", argv[0]);
+        return 1;
+    }
+
+    int n = atoi(argv[1]);
+
+    double** matrix = create_matrix(n);
+    srand(42);
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < n; j++)
+            matrix[i][j] = (rand() % 10) + 1.0;
+
+    struct timespec start, end;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+
+    double det = determinant(matrix, n);
+
+    clock_gettime(CLOCK_MONOTONIC, &end);
+
+    double time_taken = (end.tv_sec - start.tv_sec) * 1000.0 + (end.tv_nsec - start.tv_nsec) / 1000000.0;
+
+    printf("Sequential Det: %f\n", det);
+    printf("Time: %.3f ms\n", time_taken);
+
+    free_matrix(matrix, n);
+
+    return 0;
+}
